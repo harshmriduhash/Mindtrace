@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Mindtrace Capture",
+  "description": "Save page selections and articles into your Mindtrace learning graph.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Save to Mindtrace",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["http://localhost:8000/*", "https://*/*"],
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

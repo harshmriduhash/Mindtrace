@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mindtrace Capture settings</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body style="width: 420px">
+    <h1>Extension settings</h1>
+    <p class="muted">Generate a token in Mindtrace → Settings → Browser extension, then paste it here.</p>
+    <label>
+      API base
+      <input id="apiBase" style="width: 100%; padding: 8px; border-radius: 10px; border: 1px solid #e6ebe7" />
+    </label>
+    <label>
+      Extension token
+      <textarea id="token" rows="4"></textarea>
+    </label>
+    <button id="save">Save settings</button>
+    <p id="status" class="muted"></p>
+    <script src="options.js"></script>
+  </body>
+</html>

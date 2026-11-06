@@ -135,6 +135,20 @@ PRACTICE = [
         "minutes": 8,
         "keywords": ["requirements", "api", "deep dive", "trade-off", "summary"],
     },
+    {
+        "comp": "high-level-design",
+        "type": "voice",
+        "prompt": "Out loud: design a URL shortener. Cover requirements, core components, data model, and the first scaling bottleneck.",
+        "minutes": 8,
+        "keywords": ["hash", "redirect", "database", "cache", "collision", "analytics"],
+    },
+    {
+        "comp": "communication",
+        "type": "voice",
+        "prompt": "Speak as if in an interview: how do you open a system design discussion, and how do you close with trade-offs?",
+        "minutes": 5,
+        "keywords": ["requirements", "constraints", "trade-off", "summary", "clarify"],
+    },
 ]
 
 

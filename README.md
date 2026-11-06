@@ -17,7 +17,7 @@
   <a href="#how-mindtrace-solves-it"><img src="https://img.shields.io/badge/Solution—Evidence_loop-C45C26?style=flat-square" alt="Solution" /></a>
   <a href="#does-it-save-time--money"><img src="https://img.shields.io/badge/ROI—Time_+_Money-161C19?style=flat-square" alt="ROI" /></a>
   <a href="#architecture"><img src="https://img.shields.io/badge/Architecture—HLD_·_LLD-2C3A32?style=flat-square" alt="Architecture" /></a>
-  <img src="https://img.shields.io/badge/Status—Private_Beta_v0.3-0A5A46?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status—Private_Beta_v0.4-0A5A46?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Payments—Razorpay_India-161C19?style=flat-square" alt="Payments" />
 </p>
 
@@ -153,7 +153,9 @@ Auth, quotas, scheduling, ownership, and evidence rules stay deterministic in ap
 | **Practice** | **Multi-item baseline** (pause/resume) · recall/design/diagnose · **challenge feedback** |
 | **Memory** | Inspect recurring errors; delete what you don’t want kept |
 | **Progress** | Timeline of attempts and evidence |
-| **Usage / Billing / Settings** | Quotas · Razorpay plans (India) · export/delete · beta feedback |
+| **Passport** | Evidence-linked Skill Passport (print / JSON export) — not a hiring credential |
+| **Voice** | Spoken explain tasks: mic + browser transcript → rubric eval |
+| **Usage / Billing / Settings** | Quotas · Razorpay · export/delete · extension token · beta feedback |
 
 Public trust pages: `/methodology` · `/privacy` · `/security` · `/terms`
 
@@ -171,6 +173,15 @@ Plan: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md)
 8. Analytics events + structured request logs  
 9. Razorpay billing stub · SMTP email · admin overview · terms · beta feedback
 
+### P1 Passport · Extension · Voice (v0.4)
+
+Plan: [`docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md`](docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md)
+
+1. **Skill Passport** — `/app/passport` + `GET /api/v1/passport` evidence summary + JSON export  
+2. **Browser extension** — `extensions/mindtrace-capture` MV3; Bearer token from Settings; `POST /extension/capture`  
+3. **Voice practice** — `/app/practice/voice`; browser STT + optional audio store; `POST /voice/submit` · `/voice/upload`  
+4. **Vercel prep** — `apps/web/vercel.json` + [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+
 ---
 
 ## Architecture
@@ -180,7 +191,8 @@ Plan: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md)
 ```mermaid
 flowchart TB
   subgraph Clients
-    WEB["Next.js Web App<br/>Landing + Authenticated App"]
+    WEB["Next.js Web App<br/>Vercel"]
+    EXT["Chrome Extension<br/>Bearer capture"]
   end
 
   subgraph Edge
@@ -195,11 +207,12 @@ flowchart TB
 
   subgraph Data
     DB[("PostgreSQL or SQLite<br/>System of record")]
-    OBJ[("Object storage<br/>PDFs / artefacts")]
+    OBJ[("Object storage<br/>PDFs / voice artefacts")]
     REDIS[("Redis<br/>cache / queue when scaled")]
   end
 
   WEB --> CDN --> API
+  EXT --> API
   API --> DB
   API --> OBJ
   API --> REDIS
@@ -304,18 +317,15 @@ erDiagram
 ```text
 Mindtrace/
 ├── apps/
-│   ├── web/                 # Next.js 15 App Router (UI)
+│   ├── web/                 # Next.js 15 (Vercel-ready)
 │   └── api/                 # FastAPI modular monolith
-│       ├── app/
-│       │   ├── modules/     # auth, sources, practice, …
-│       │   ├── ai/          # provider adapter
-│       │   ├── services/    # SSRF, PDF, email, rate limit
-│       │   └── models/      # SQLAlchemy entities
-│       ├── evals/golden/    # AI regression fixtures
-│       └── scripts/         # seed, init_db, golden runner
-├── packages/contracts/      # API contract notes
-├── docs/                    # Phase plan + ADRs
-├── docker-compose.yml       # Postgres + Redis + MinIO
+│       ├── app/modules/     # auth, passport, voice, extension, …
+│       ├── evals/golden/
+│       └── scripts/
+├── extensions/
+│   └── mindtrace-capture/   # Chrome MV3 “Save to Mindtrace”
+├── docs/                    # Phase plans + DEPLOYMENT.md
+├── docker-compose.yml
 └── Mindtrace_Production_Grade_PRD_v0.1.md
 ```
 
@@ -394,12 +404,29 @@ docker compose up -d
 alembic upgrade head
 ```
 
+### 6) Browser extension (local)
+
+```bash
+# Chrome → Extensions → Load unpacked → extensions/mindtrace-capture
+# Settings → Generate extension token → paste into extension options
+```
+
+### 7) Deploy web to Vercel
+
+See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**. Short version:
+
+- Vercel **Root Directory** = `apps/web`
+- `API_ORIGIN` = public FastAPI host
+- `NEXT_PUBLIC_API_URL=/api/v1` (rewrite proxy keeps cookies same-site)
+- API + Postgres stay on Railway / Render / Fly (not Vercel)
+
 ### Environment highlights
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | SQLite or Postgres |
 | `SESSION_SECRET` | Sign cookies (change in prod) |
+| `APP_ORIGIN` / `API_ORIGIN` | CORS + cookie domain pairing |
 | `AI_ENABLED` / `OPENAI_API_KEY` | Optional LLM path |
 | `STORAGE_BACKEND` / `LOCAL_STORAGE_DIR` | `local` or `s3` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | India checkout (optional) |
@@ -446,11 +473,12 @@ We do **not** claim SOC 2 / GDPR certification until independently verified.
 | 0 Foundation | Monorepo, schema, auth, design system | Done |
 | 1A–1D MVP loop | Activation → learn → practice → trust | Done |
 | P0 depth + launch | Baseline set, provenance, challenge, map depth, migrations, storage/workers, CI, analytics, India ops | **Done (v0.3)** |
+| P1 Passport / Extension / Voice | Evidence passport, Chrome capture, spoken practice, Vercel prep | **Done (v0.4)** |
 | Live Razorpay keys / SMTP | Turn stubs into production money + mail | Configure env when ready |
-| V1 | Voice practice, Skill Passport, 2nd path | After retention signal |
+| Next | 2nd skill path, adaptive scheduling, production hardening | After retention signal |
 
 Full product definition: [`Mindtrace_Production_Grade_PRD_v0.1.md`](Mindtrace_Production_Grade_PRD_v0.1.md)  
-Phase plan: [`docs/MVP_PHASE_PLAN.md`](docs/MVP_PHASE_PLAN.md) · P0 plan: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md)  
+Phase plan: [`docs/MVP_PHASE_PLAN.md`](docs/MVP_PHASE_PLAN.md) · P0: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md) · P1: [`docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md`](docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md) · Deploy: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)  
 ADR: [`docs/adr/0001-architecture.md`](docs/adr/0001-architecture.md)
 
 ---

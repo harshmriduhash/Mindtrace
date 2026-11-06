@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mindtrace Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <h1>Save to Mindtrace</h1>
+    <p id="page-title" class="muted"></p>
+    <label>
+      Selected / notes
+      <textarea id="text" rows="8" placeholder="Select text on the page, or type notes here."></textarea>
+    </label>
+    <label class="row">
+      <input type="checkbox" id="fetch-page" />
+      Try fetch full public page text if selection is empty
+    </label>
+    <button id="save">Save source</button>
+    <p id="status" class="muted"></p>
+    <a href="options.html" target="_blank">Extension settings</a>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -29,6 +29,9 @@ export default function PracticeIndexPage() {
         <Link href="/app/practice/baseline" className="btn-primary">
           Start baseline
         </Link>
+        <Link href="/app/practice/voice" className="btn-secondary">
+          Voice practice
+        </Link>
         <Link href="/app/practice/review" className="btn-secondary">
           Due reviews ({due.length})
         </Link>

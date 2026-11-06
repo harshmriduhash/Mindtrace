@@ -38,7 +38,7 @@ Memory inspect/correct/export/delete · quotas · usage page · privacy/security
 **Billing:** Stripe deferred (not operating in India). Free plan + transparent usage quotas ship without payments.
 
 ### Phase 2+ (after beta signal)
-Adaptive scheduling improvements, voice, Skill Passport, second path, browser extension, India-capable payments — only after retention evidence
+P1 shipped in-repo: Skill Passport, browser extension, voice practice, Vercel prep. Remaining: adaptive scheduling, second path, live Razorpay/SMTP — after retention evidence
 
 ## Vertical-slice rule
 Ship one complete user outcome per slice (API + DB + UI + states + ownership checks). Do not build the entire PRD in one pass.

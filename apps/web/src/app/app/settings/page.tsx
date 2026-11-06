@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [exportJson, setExportJson] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [extToken, setExtToken] = useState<string | null>(null);
 
   async function exportData() {
     const data = await api<Record<string, unknown>>("/exports", { method: "POST" });
@@ -35,6 +36,19 @@ export default function SettingsPage() {
       setMessage("Feedback sent — thank you.");
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : "Could not send feedback");
+    }
+  }
+
+  async function createExtensionToken() {
+    try {
+      const data = await api<{ token: string; api_base_hint: string; expires_in_days: number }>(
+        "/auth/extension-token",
+        { method: "POST" },
+      );
+      setExtToken(data.token);
+      setMessage(`Extension token created (expires in ${data.expires_in_days} days). API: ${data.api_base_hint}`);
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : "Could not create token");
     }
   }
 
@@ -64,6 +78,22 @@ export default function SettingsPage() {
         {message && <p className="text-sm text-accent-strong">{message}</p>}
         {exportJson && (
           <pre className="max-h-96 overflow-auto rounded-xl bg-ink-950 p-4 text-xs text-ink-100">{exportJson}</pre>
+        )}
+      </section>
+
+      <section className="panel space-y-4 p-6">
+        <h2 className="font-display text-2xl text-ink-950">Browser extension</h2>
+        <p className="text-sm text-ink-600">
+          Load <code className="font-mono text-xs">extensions/mindtrace-capture</code> as an unpacked Chrome extension.
+          Generate a token here and paste it into the extension options.
+        </p>
+        <button className="btn-secondary" onClick={createExtensionToken}>
+          Generate extension token
+        </button>
+        {extToken && (
+          <pre className="max-h-40 overflow-auto rounded-xl bg-ink-950 p-4 text-xs text-ink-100 break-all whitespace-pre-wrap">
+            {extToken}
+          </pre>
         )}
       </section>
 
