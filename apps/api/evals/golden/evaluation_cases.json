@@ -1,0 +1,30 @@
+[
+  {
+    "id": "cache-strong",
+    "prompt": "Explain cache-aside vs write-through.",
+    "response": "Cache-aside loads on miss and application writes to the store then cache. Write-through updates cache and store together for stronger consistency, with higher write latency. Trade-offs include consistency, latency, and invalidation complexity.",
+    "rubric": {
+      "dimensions": [
+        {"id": "correctness", "weight": 0.4},
+        {"id": "tradeoffs", "weight": 0.3},
+        {"id": "clarity", "weight": 0.3}
+      ]
+    },
+    "expected_keywords": ["cache-aside", "write-through", "consistency", "latency"],
+    "min_overall": 3.0
+  },
+  {
+    "id": "cache-weak",
+    "prompt": "Explain cache-aside vs write-through.",
+    "response": "Caching is good.",
+    "rubric": {
+      "dimensions": [
+        {"id": "correctness", "weight": 0.4},
+        {"id": "tradeoffs", "weight": 0.3},
+        {"id": "clarity", "weight": 0.3}
+      ]
+    },
+    "expected_keywords": ["cache-aside", "write-through", "consistency"],
+    "max_overall": 3.0
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "cache-basics",
+    "title": "Caching notes",
+    "text": "Cache-aside loads data into cache on a miss. Write-through updates cache and database together. Write-back writes to cache first and flushes later. Invalidation strategies matter for consistency.",
+    "expect_min_concepts": 1,
+    "must_include_any": ["cache", "write", "invalidation"]
+  },
+  {
+    "id": "reliability",
+    "title": "Reliability notes",
+    "text": "Use timeouts, retries with jitter, and circuit breakers. Make payment APIs idempotent using idempotency keys. Prefer graceful degradation over cascading failure.",
+    "expect_min_concepts": 1,
+    "must_include_any": ["retry", "timeout", "idempotent", "circuit"]
+  }
+]
