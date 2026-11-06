@@ -100,4 +100,6 @@ export type Evaluation = {
   model_version: string;
   confidence: number | null;
   is_provisional: boolean;
+  challenge_status?: string;
+  challenge_reason?: string | null;
 };

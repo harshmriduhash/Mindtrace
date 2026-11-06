@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 
@@ -33,7 +34,7 @@ export default function SkillsPage() {
       <div className="mt-8 space-y-3">
         {skills.length === 0 && <div className="panel p-6 text-ink-500">No skills yet. Complete onboarding first.</div>}
         {skills.map((s) => (
-          <article key={s.id} className="panel p-5">
+          <Link key={s.id} href={`/app/skills/${s.id}`} className="panel block p-5 transition hover:bg-white">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="font-display text-xl text-ink-950">{s.competency?.title}</h2>
@@ -46,8 +47,9 @@ export default function SkillsPage() {
             <p className="mt-3 text-xs text-ink-500">
               Evidence count: {s.evidence_count}
               {s.confidence != null ? ` · Self-reported confidence: ${Math.round(s.confidence * 100)}%` : ""}
+              {" · Open for prerequisites & dispute"}
             </p>
-          </article>
+          </Link>
         ))}
       </div>
     </div>

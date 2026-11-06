@@ -8,16 +8,26 @@ from app.ai.provider import ai_provider
 from app.models import Concept, ConceptSource, Job, Source, SourceSegment, UsageEvent
 
 
-def extract_and_attach_concepts(db: Session, *, source: Source, text: str, user_id) -> int:
-    job = Job(
-        user_id=user_id,
-        type="source_extract",
-        status="running",
-        idempotency_key=(source.metadata_json or {}).get("idempotency_key"),
-        payload_json={"source_id": str(source.id)},
-    )
-    db.add(job)
-    db.flush()
+def extract_and_attach_concepts(
+    db: Session,
+    *,
+    source: Source,
+    text: str,
+    user_id,
+    create_job: bool = True,
+) -> int:
+    if create_job:
+        job = Job(
+            user_id=user_id,
+            type="source_extract",
+            status="running",
+            idempotency_key=(source.metadata_json or {}).get("idempotency_key"),
+            payload_json={"source_id": str(source.id)},
+        )
+        db.add(job)
+        db.flush()
+    else:
+        job = None
 
     segment = SourceSegment(
         source_id=source.id,
@@ -52,7 +62,8 @@ def extract_and_attach_concepts(db: Session, *, source: Source, text: str, user_
 
     source.status = "ready_for_review"
     source.raw_text = text
-    job.status = "completed"
-    job.result_json = {"concepts": len(extracted)}
+    if job is not None:
+        job.status = "completed"
+        job.result_json = {"concepts": len(extracted)}
     db.add(UsageEvent(user_id=user_id, feature="source_import", units=1, cost_usd=0, metadata_json={"type": source.type}))
     return len(extracted)

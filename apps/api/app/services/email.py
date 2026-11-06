@@ -23,8 +23,27 @@ def hash_token(token: str) -> str:
 def send_verification_email(*, email: str, token: str) -> str:
     settings = get_settings()
     link = f"{settings.app_origin}/verify-email?token={token}"
-    # No external ESP wired yet — log for local/beta operators.
-    print(f"[mindtrace-email] verification link for {email}: {link}")
+    subject = "Verify your Mindtrace email"
+    body = f"Verify your Mindtrace account:\n\n{link}\n\nThis link expires in 24 hours."
+    if settings.smtp_host and settings.smtp_user:
+        try:
+            import smtplib
+            from email.message import EmailMessage
+
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = settings.email_from
+            msg["To"] = email
+            msg.set_content(body)
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+                smtp.starttls()
+                smtp.login(settings.smtp_user, settings.smtp_password)
+                smtp.send_message(msg)
+            print(f"[mindtrace-email] sent verification to {email}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[mindtrace-email] SMTP failed ({exc}); link for {email}: {link}")
+    else:
+        print(f"[mindtrace-email] verification link for {email}: {link}")
     return link
 
 

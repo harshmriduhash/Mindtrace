@@ -17,7 +17,8 @@
   <a href="#how-mindtrace-solves-it"><img src="https://img.shields.io/badge/Solution—Evidence_loop-C45C26?style=flat-square" alt="Solution" /></a>
   <a href="#does-it-save-time--money"><img src="https://img.shields.io/badge/ROI—Time_+_Money-161C19?style=flat-square" alt="ROI" /></a>
   <a href="#architecture"><img src="https://img.shields.io/badge/Architecture—HLD_·_LLD-2C3A32?style=flat-square" alt="Architecture" /></a>
-  <img src="https://img.shields.io/badge/Status—Private_Beta_MVP-0A5A46?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status—Private_Beta_v0.3-0A5A46?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Payments—Razorpay_India-161C19?style=flat-square" alt="Payments" />
 </p>
 
 <p align="center">
@@ -147,14 +148,28 @@ Auth, quotas, scheduling, ownership, and evidence rules stay deterministic in ap
 | Area | What you get |
 |---|---|
 | **Today** | One clear next best action + why |
-| **My Skills** | Competency map with evidence status (not fake mastery %) |
-| **Learn** | Import **text / public URL / PDF** → extract → **you approve** concepts → tutor |
-| **Practice** | Baseline, recall, design, diagnose — answer first, feedback after |
+| **My Skills** | Competency map with prerequisites, evidence drill-down, and dispute |
+| **Learn** | Import **text / URL / PDF** → edit concepts → see provenance → approve → tutor |
+| **Practice** | **Multi-item baseline** (pause/resume) · recall/design/diagnose · **challenge feedback** |
 | **Memory** | Inspect recurring errors; delete what you don’t want kept |
 | **Progress** | Timeline of attempts and evidence |
-| **Usage / Settings** | Quotas, export, deletion |
+| **Usage / Billing / Settings** | Quotas · Razorpay plans (India) · export/delete · beta feedback |
 
-Public trust pages: [`/methodology`](apps/web/src/app/methodology/page.tsx) · [`/privacy`](apps/web/src/app/privacy/page.tsx) · [`/security`](apps/web/src/app/security/page.tsx)
+Public trust pages: `/methodology` · `/privacy` · `/security` · `/terms`
+
+### P0 depth + launch (v0.3)
+
+Plan: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md)
+
+1. Multi-item balanced baseline with pause/resume  
+2. Concept edit + visible source provenance  
+3. Challenge evaluation feedback  
+4. Competency prerequisites, evidence, dispute  
+5. Alembic baseline migration (SQLite local / Postgres ready)  
+6. Object storage for PDFs + job worker for async extract  
+7. GitHub Actions CI + IDOR tests + golden evals  
+8. Analytics events + structured request logs  
+9. Razorpay billing stub · SMTP email · admin overview · terms · beta feedback
 
 ---
 
@@ -315,8 +330,10 @@ Mindtrace/
 | Database | SQLite (local) / PostgreSQL (prod) | Relational integrity for attempts & ownership |
 | Auth | Sessions (HttpOnly cookie) + Argon2id | Proven, browser-friendly |
 | AI | Provider adapter + deterministic fallback | Product works without API keys |
-| Files | PDF parse via `pypdf`; URL fetch SSRF-safe | Beta-ready ingest without bypassing paywalls |
-| Queue | Job records + Redis-ready | Async path without premature infra |
+| Files | Local/S3 object storage + `pypdf`; SSRF-safe URL fetch | PDFs stored by checksum key |
+| Jobs | `jobs` table + `python -m app.workers.process_jobs` | Sync ingest by default; async when configured |
+| Payments | **Razorpay (INR)** — Stripe deferred | India-first monetization path |
+| CI | GitHub Actions | Lint/build + golden evals + ownership tests |
 
 ---
 
@@ -352,18 +369,29 @@ API health: **[http://localhost:8000/healthz](http://localhost:8000/healthz)**
 
 > The web app proxies `/api/v1/*` → API so **session cookies work on localhost**.
 
-### 3) Golden AI evals
+### 3) Optional async worker
+
+```bash
+cd apps/api && source .venv/bin/activate
+PYTHONPATH=. python -m app.workers.process_jobs
+```
+
+### 4) Tests & evals
 
 ```bash
 cd apps/api && source .venv/bin/activate
 python scripts/run_golden_evals.py
+PYTHONPATH=. pytest -q tests/test_ownership.py
+# schema migrate (Postgres or SQLite URL):
+alembic upgrade head
 ```
 
-### 4) Optional Docker data plane
+### 5) Optional Docker data plane
 
 ```bash
 docker compose up -d
 # then set DATABASE_URL=postgresql+psycopg://mindtrace:mindtrace@localhost:5432/mindtrace
+alembic upgrade head
 ```
 
 ### Environment highlights
@@ -373,6 +401,10 @@ docker compose up -d
 | `DATABASE_URL` | SQLite or Postgres |
 | `SESSION_SECRET` | Sign cookies (change in prod) |
 | `AI_ENABLED` / `OPENAI_API_KEY` | Optional LLM path |
+| `STORAGE_BACKEND` / `LOCAL_STORAGE_DIR` | `local` or `s3` |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | India checkout (optional) |
+| `SMTP_*` | Real verification email (optional) |
+| `ADMIN_API_KEY` | Header `X-Admin-Key` for `/api/v1/admin/*` |
 | `NEXT_PUBLIC_API_URL` | Default `/api/v1` (same-origin) |
 
 ---
@@ -412,15 +444,13 @@ We do **not** claim SOC 2 / GDPR certification until independently verified.
 | Phase | Outcome | Status |
 |---|---|---|
 | 0 Foundation | Monorepo, schema, auth, design system | Done |
-| 1A Activation | Signup → onboarding → Today | Done |
-| 1B Learn | Text / URL / PDF + approve + tutor | Done |
-| 1C Practice | Baseline, recall, rubric eval, scheduler, errors | Done |
-| 1D Trust | Quotas, usage, privacy pages, email verify, golden evals | Done |
-| Payments | India-capable billing (Stripe deferred) | Planned |
+| 1A–1D MVP loop | Activation → learn → practice → trust | Done |
+| P0 depth + launch | Baseline set, provenance, challenge, map depth, migrations, storage/workers, CI, analytics, India ops | **Done (v0.3)** |
+| Live Razorpay keys / SMTP | Turn stubs into production money + mail | Configure env when ready |
 | V1 | Voice practice, Skill Passport, 2nd path | After retention signal |
 
 Full product definition: [`Mindtrace_Production_Grade_PRD_v0.1.md`](Mindtrace_Production_Grade_PRD_v0.1.md)  
-Phase plan: [`docs/MVP_PHASE_PLAN.md`](docs/MVP_PHASE_PLAN.md)  
+Phase plan: [`docs/MVP_PHASE_PLAN.md`](docs/MVP_PHASE_PLAN.md) · P0 plan: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md)  
 ADR: [`docs/adr/0001-architecture.md`](docs/adr/0001-architecture.md)
 
 ---

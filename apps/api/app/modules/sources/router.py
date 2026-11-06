@@ -120,6 +120,9 @@ async def upload_pdf(
         # Still allow if magic bytes check passes.
         pass
 
+    from app.models import Job
+    from app.services.storage import object_storage
+
     data = await file.read(settings.max_pdf_bytes + 1)
     try:
         text, pdf_meta = extract_pdf_text(data, max_bytes=settings.max_pdf_bytes)
@@ -140,16 +143,37 @@ async def upload_pdf(
     if len(text) > settings.max_text_chars:
         text = text[: settings.max_text_chars]
 
+    checksum = object_storage.checksum(data)
+    object_key = f"users/{user.id}/sources/{checksum}.pdf"
+    object_storage.put_bytes(key=object_key, data=data, content_type="application/pdf")
+
     source = Source(
         user_id=user.id,
         type="pdf",
         title=title,
         status="processing",
+        object_key=object_key,
+        checksum=checksum,
+        raw_text=text if settings.sync_ingest else None,
         metadata_json={"filename": filename, "idempotency_key": idempotency_key, **pdf_meta},
     )
     db.add(source)
     db.flush()
-    extract_and_attach_concepts(db, source=source, text=text, user_id=user.id)
+
+    job = Job(
+        user_id=user.id,
+        type="source_extract",
+        status="queued",
+        idempotency_key=idempotency_key,
+        payload_json={"source_id": str(source.id)},
+    )
+    db.add(job)
+    db.flush()
+
+    if settings.sync_ingest:
+        extract_and_attach_concepts(db, source=source, text=text, user_id=user.id, create_job=False)
+        job.status = "completed"
+        job.result_json = {"synced": True}
     db.commit()
     db.refresh(source)
     return SourceOut.model_validate(source)

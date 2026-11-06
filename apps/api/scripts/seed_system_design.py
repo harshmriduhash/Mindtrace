@@ -181,6 +181,22 @@ def main() -> None:
             comp_by_slug[item["slug"]] = comp
             print(f"  + competency {comp.slug}")
 
+        # Prerequisite tree (parent_id): requirements → design → data/caching/reliability/scalability → communication
+        prereq_edges = {
+            "high-level-design": "requirements-and-scope",
+            "data-modeling": "high-level-design",
+            "caching": "data-modeling",
+            "reliability": "high-level-design",
+            "scalability": "reliability",
+            "communication": "requirements-and-scope",
+        }
+        for child_slug, parent_slug in prereq_edges.items():
+            child = comp_by_slug.get(child_slug)
+            parent = comp_by_slug.get(parent_slug)
+            if child and parent and child.parent_id != parent.id:
+                child.parent_id = parent.id
+                print(f"  ~ prereq {child_slug} ← {parent_slug}")
+
         for p in PRACTICE:
             comp = comp_by_slug[p["comp"]]
             exists = db.scalar(

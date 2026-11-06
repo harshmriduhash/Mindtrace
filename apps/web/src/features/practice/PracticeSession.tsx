@@ -16,6 +16,8 @@ export function PracticeSession({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState("");
+  const [challengeReason, setChallengeReason] = useState("");
+  const [challengeMsg, setChallengeMsg] = useState<string | null>(null);
 
   useEffect(() => {
     async function boot() {
@@ -79,6 +81,20 @@ export function PracticeSession({
     return <div className="panel animate-pulse-soft p-8 text-ink-500">Preparing practice session…</div>;
   }
 
+  async function challengeFeedback() {
+    if (!evaluation) return;
+    try {
+      const updated = await api<Evaluation>(`/evaluations/${evaluation.id}/challenge`, {
+        method: "POST",
+        json: { reason: challengeReason },
+      });
+      setEvaluation(updated);
+      setChallengeMsg("Challenge recorded. Thanks for the correction signal.");
+    } catch (err) {
+      setChallengeMsg(err instanceof ApiError ? err.message : "Challenge failed");
+    }
+  }
+
   if (evaluation) {
     const r = evaluation.result_json;
     return (
@@ -91,6 +107,9 @@ export function PracticeSession({
           </h2>
           <p className="mt-2 text-sm text-ink-500">
             Uncertainty {Math.round((r.uncertainty || 0) * 100)}% · model {evaluation.model_version}
+            {evaluation.challenge_status && evaluation.challenge_status !== "none"
+              ? ` · ${evaluation.challenge_status}`
+              : ""}
           </p>
           <p className="mt-3 text-ink-600">{r.disclaimer}</p>
         </div>
@@ -127,6 +146,24 @@ export function PracticeSession({
             </>
           )}
         </div>
+
+        {evaluation.challenge_status !== "challenged" && (
+          <div className="panel space-y-3 p-6">
+            <h3 className="font-medium text-ink-900">Challenge this feedback</h3>
+            <p className="text-sm text-ink-600">If the rubric miss is wrong, explain why. This becomes part of your evidence record.</p>
+            <textarea
+              className="input min-h-24"
+              value={challengeReason}
+              onChange={(e) => setChallengeReason(e.target.value)}
+              minLength={10}
+              placeholder="What did the evaluation miss?"
+            />
+            <button className="btn-secondary" onClick={challengeFeedback} disabled={challengeReason.trim().length < 10}>
+              Submit challenge
+            </button>
+            {challengeMsg && <p className="text-sm text-accent-strong">{challengeMsg}</p>}
+          </div>
+        )}
       </div>
     );
   }

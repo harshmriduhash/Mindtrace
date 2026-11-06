@@ -145,6 +145,8 @@ class EvaluationOut(ORMModel):
     model_version: str
     confidence: float | None
     is_provisional: bool
+    challenge_status: str = "none"
+    challenge_reason: str | None = None
 
 
 class RecommendationOut(BaseModel):

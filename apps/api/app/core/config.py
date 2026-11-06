@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     s3_secret_key: str = "mindtrace_secret"
     s3_bucket: str = "mindtrace-sources"
     s3_region: str = "us-east-1"
+    storage_backend: str = "local"  # local | s3
+    local_storage_dir: str = "./data/object_storage"
+    sync_ingest: bool = True  # process extract inline when True; else rely on worker
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
@@ -39,6 +42,21 @@ class Settings(BaseSettings):
 
     max_pdf_bytes: int = 25 * 1024 * 1024
     max_text_chars: int = 200_000
+
+    # Email (ESP) — when empty, links are logged
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = "Mindtrace <noreply@mindtrace.local>"
+
+    # Razorpay (India payments) — optional
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+
+    # Admin
+    admin_api_key: str = "dev-admin-key-change-me"
 
 
 @lru_cache

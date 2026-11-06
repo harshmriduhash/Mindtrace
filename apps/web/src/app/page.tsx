@@ -61,6 +61,9 @@ export default function HomePage() {
         <Link href="/security" className="hover:text-ink-800">
           Security
         </Link>
+        <Link href="/terms" className="hover:text-ink-800">
+          Terms
+        </Link>
         <Link href="/product" className="hover:text-ink-800">
           Product
         </Link>

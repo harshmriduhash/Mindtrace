@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,11 @@ from app.schemas.common import (
     EvaluationOut,
     PracticeItemOut,
 )
+from app.services.analytics import track
+
+
+class ChallengeIn(BaseModel):
+    reason: str = Field(min_length=10, max_length=4000)
 
 router = APIRouter(tags=["practice"])
 
@@ -252,6 +258,7 @@ def submit_attempt(
         )
     )
     db.add(UsageEvent(user_id=user.id, feature="assessment_evaluation", units=1, cost_usd=0, metadata_json={}))
+    track(db, user_id=user.id, event_name="practice_submitted", properties={"attempt_id": str(attempt.id)})
     db.commit()
     db.refresh(evaluation)
     return EvaluationOut.model_validate(evaluation)
@@ -267,4 +274,33 @@ def get_result(
     evaluation = db.scalar(select(Evaluation).where(Evaluation.attempt_id == attempt.id))
     if not evaluation:
         raise NotFoundError("Evaluation not ready")
+    return EvaluationOut.model_validate(evaluation)
+
+
+@router.post("/evaluations/{evaluation_id}/challenge", response_model=EvaluationOut)
+def challenge_evaluation(
+    evaluation_id: UUID,
+    payload: ChallengeIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EvaluationOut:
+    evaluation = db.get(Evaluation, evaluation_id)
+    if not evaluation:
+        raise NotFoundError("Evaluation not found")
+    attempt = db.scalar(select(Attempt).where(Attempt.id == evaluation.attempt_id, Attempt.user_id == user.id))
+    if not attempt:
+        raise NotFoundError("Evaluation not found")
+    if evaluation.challenge_status == "challenged":
+        return EvaluationOut.model_validate(evaluation)
+    evaluation.challenge_status = "challenged"
+    evaluation.challenge_reason = payload.reason
+    evaluation.challenged_at = datetime.now(UTC)
+    track(
+        db,
+        user_id=user.id,
+        event_name="evaluation_challenged",
+        properties={"evaluation_id": str(evaluation.id)},
+    )
+    db.commit()
+    db.refresh(evaluation)
     return EvaluationOut.model_validate(evaluation)

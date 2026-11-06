@@ -115,6 +115,8 @@ class UserSkill(Base, TimestampMixin):
     confidence: Mapped[Optional[float]] = mapped_column(Float)
     evidence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dispute_note: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("user_id", "competency_id", name="uq_user_skill"),
@@ -235,6 +237,55 @@ class Evaluation(Base, TimestampMixin):
     prompt_version: Mapped[str] = mapped_column(String(64), default="none", nullable=False)
     confidence: Mapped[Optional[float]] = mapped_column(Float)
     is_provisional: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    challenge_status: Mapped[str] = mapped_column(String(32), default="none", nullable=False)
+    challenge_reason: Mapped[Optional[str]] = mapped_column(Text)
+    challenged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class BaselineSession(Base, TimestampMixin):
+    __tablename__ = "baseline_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_path_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("skill_paths.id"))
+    status: Mapped[str] = mapped_column(String(32), default="in_progress", nullable=False)
+    current_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    item_ids_json: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
+    paused_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, index=True)
+    session_id: Mapped[Optional[str]] = mapped_column(String(128))
+    event_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ProductFeedback(Base, TimestampMixin):
+    __tablename__ = "product_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    email: Mapped[Optional[str]] = mapped_column(String(320))
+    category: Mapped[str] = mapped_column(String(64), default="general", nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+
+
+class SkillDispute(Base, TimestampMixin):
+    __tablename__ = "skill_disputes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_skill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_skills.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
 
 
 class LearnerMemory(Base, TimestampMixin):

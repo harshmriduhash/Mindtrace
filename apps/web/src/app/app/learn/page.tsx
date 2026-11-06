@@ -6,6 +6,14 @@ import { ApiError, api } from "@/lib/api/client";
 
 type Source = { id: string; title: string; type: string; status: string; created_at: string };
 type Concept = { id: string; title: string; definition: string; status: string; confidence: number | null };
+type ConceptDetail = Concept & {
+  provenance: {
+    source_title: string | null;
+    source_type: string | null;
+    page_or_timestamp: string | null;
+    excerpt: string;
+  }[];
+};
 type Mode = "text" | "url" | "pdf";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
@@ -15,6 +23,10 @@ export default function LearnPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [details, setDetails] = useState<Record<string, ConceptDetail>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDef, setEditDef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -84,6 +96,32 @@ export default function LearnPage() {
     setSelected(id);
     const rows = await api<Concept[]>(`/sources/${id}/concepts`);
     setConcepts(rows);
+    const detailEntries = await Promise.all(
+      rows.map(async (c) => {
+        const d = await api<ConceptDetail>(`/concepts/${c.id}`);
+        return [c.id, d] as const;
+      }),
+    );
+    setDetails(Object.fromEntries(detailEntries));
+  }
+
+  function startEdit(c: Concept) {
+    setEditing(c.id);
+    setEditTitle(c.title);
+    setEditDef(c.definition);
+  }
+
+  async function saveEdit(conceptId: string) {
+    const updated = await api<ConceptDetail>(`/concepts/${conceptId}`, {
+      method: "PATCH",
+      json: { title: editTitle, definition: editDef },
+    });
+    setDetails((prev) => ({ ...prev, [conceptId]: updated }));
+    setConcepts((prev) =>
+      prev.map((c) => (c.id === conceptId ? { ...c, title: updated.title, definition: updated.definition } : c)),
+    );
+    setEditing(null);
+    setMessage("Concept updated before approval.");
   }
 
   async function approveAll() {
@@ -193,20 +231,58 @@ export default function LearnPage() {
             )}
           </div>
           <ul className="mt-3 space-y-3">
-            {concepts.map((c) => (
-              <li key={c.id} className="panel p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium text-ink-900">{c.title}</h3>
-                  <span className="text-xs text-ink-500">{c.status}</span>
-                </div>
-                <p className="mt-2 text-sm text-ink-600">{c.definition}</p>
-                {c.status === "approved" && (
-                  <button className="btn-secondary mt-3" onClick={() => askTutor(c.id)}>
-                    Explain with tutor
-                  </button>
-                )}
-              </li>
-            ))}
+            {concepts.map((c) => {
+              const detail = details[c.id];
+              return (
+                <li key={c.id} className="panel p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-medium text-ink-900">{c.title}</h3>
+                    <span className="text-xs text-ink-500">{c.status}</span>
+                  </div>
+                  {editing === c.id ? (
+                    <div className="mt-3 space-y-2">
+                      <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                      <textarea className="input min-h-24" value={editDef} onChange={(e) => setEditDef(e.target.value)} />
+                      <div className="flex gap-2">
+                        <button type="button" className="btn-primary" onClick={() => saveEdit(c.id)}>
+                          Save edits
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-2 text-sm text-ink-600">{c.definition}</p>
+                      {detail?.provenance?.length ? (
+                        <div className="mt-3 rounded-xl bg-ink-50 p-3 text-xs text-ink-600">
+                          <p className="font-medium text-ink-800">Provenance</p>
+                          {detail.provenance.map((p, idx) => (
+                            <p key={idx} className="mt-1">
+                              {p.source_title || "Source"} ({p.source_type}
+                              {p.page_or_timestamp ? ` · p.${p.page_or_timestamp}` : ""}): “{p.excerpt}”
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {c.status === "proposed" && (
+                          <button type="button" className="btn-secondary" onClick={() => startEdit(c)}>
+                            Edit before approve
+                          </button>
+                        )}
+                        {c.status === "approved" && (
+                          <button type="button" className="btn-secondary" onClick={() => askTutor(c.id)}>
+                            Explain with tutor
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ul>
           {tutorOut && (
             <div className="panel mt-4 whitespace-pre-wrap p-4 text-sm text-ink-700">{tutorOut}</div>
