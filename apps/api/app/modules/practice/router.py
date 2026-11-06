@@ -19,6 +19,7 @@ from app.models import (
     PracticeItem,
     ReviewEvent,
     ReviewState,
+    SandboxRun,
     UsageEvent,
     User,
     UserSkill,
@@ -32,10 +33,18 @@ from app.schemas.common import (
     PracticeItemOut,
 )
 from app.services.analytics import track
+from app.services.sandbox import SandboxError, run_python_tests
 
 
 class ChallengeIn(BaseModel):
     reason: str = Field(min_length=10, max_length=4000)
+
+
+class ImplementSubmitIn(BaseModel):
+    code: str = Field(min_length=1, max_length=80_000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    idempotency_key: str | None = None
+
 
 router = APIRouter(tags=["practice"])
 
@@ -221,7 +230,7 @@ def submit_attempt(
         )
     )
 
-    # Schedule next review.
+    # Adaptive schedule next review.
     score = float(result.get("overall_score") or 0)
     sched_result = result_from_score(score)
     state = db.scalar(
@@ -235,18 +244,29 @@ def submit_attempt(
             stability=1.0,
             difficulty=0.3,
             reps=0,
+            consecutive_fails=0,
+            remediation_mode="standard",
         )
         db.add(state)
         db.flush()
-    new_s, new_d, interval = next_interval_days(
-        result=sched_result, stability=state.stability, difficulty=state.difficulty, reps=state.reps
+    new_s, new_d, interval, fails, remediation = next_interval_days(
+        result=sched_result,
+        stability=state.stability,
+        difficulty=state.difficulty,
+        reps=state.reps,
+        consecutive_fails=state.consecutive_fails,
     )
     state.stability = new_s
     state.difficulty = new_d
     state.reps += 1
+    state.consecutive_fails = fails
+    state.remediation_mode = remediation
     state.last_result = sched_result
     state.due_at = compute_due_at(interval)
     state.version += 1
+    result["remediation_mode"] = remediation
+    result["consecutive_fails"] = fails
+    evaluation.result_json = result
 
     db.add(
         ReviewEvent(
@@ -304,3 +324,186 @@ def challenge_evaluation(
     db.commit()
     db.refresh(evaluation)
     return EvaluationOut.model_validate(evaluation)
+
+
+@router.post("/practice-items/{item_id}/implement")
+def submit_implement(
+    item_id: UUID,
+    payload: ImplementSubmitIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Run curated implement-task code in the restricted sandbox and record evidence."""
+    item = db.get(PracticeItem, item_id)
+    if not item or (not item.is_curated and item.user_id != user.id):
+        raise NotFoundError("Practice item not found")
+    if item.type != "implement":
+        raise AppError("not_implement", "This practice item is not an implement task", 400)
+
+    meta = item.metadata_json or {}
+    tests = meta.get("tests") or []
+    if not tests:
+        raise AppError("no_tests", "Implement task has no sandbox tests configured", 500)
+
+    if payload.idempotency_key:
+        existing = db.scalar(
+            select(Attempt).where(Attempt.user_id == user.id, Attempt.idempotency_key == payload.idempotency_key)
+        )
+        if existing:
+            evaluation = db.scalar(select(Evaluation).where(Evaluation.attempt_id == existing.id))
+            run = db.scalar(select(SandboxRun).where(SandboxRun.attempt_id == existing.id))
+            return {
+                "attempt_id": str(existing.id),
+                "evaluation_id": str(evaluation.id) if evaluation else None,
+                "sandbox": run.result_json if run else {},
+            }
+
+    attempt = Attempt(
+        user_id=user.id,
+        practice_item_id=item.id,
+        response_text=payload.code,
+        confidence=payload.confidence,
+        status="submitted",
+        submitted_at=datetime.now(UTC),
+        idempotency_key=payload.idempotency_key,
+    )
+    db.add(attempt)
+    db.flush()
+
+    run = SandboxRun(
+        user_id=user.id,
+        attempt_id=attempt.id,
+        practice_item_id=item.id,
+        language=meta.get("language", "python"),
+        status="running",
+    )
+    db.add(run)
+    db.flush()
+
+    try:
+        sandbox_result = run_python_tests(user_code=payload.code, tests=tests)
+        run.status = "passed" if sandbox_result["passed"] else "failed"
+        run.stdout = sandbox_result.get("stdout")
+        run.stderr = sandbox_result.get("stderr")
+        run.exit_code = sandbox_result.get("exit_code")
+        run.tests_passed = sandbox_result.get("tests_passed", 0)
+        run.tests_total = sandbox_result.get("tests_total", 0)
+        run.result_json = sandbox_result
+    except SandboxError as exc:
+        run.status = "error"
+        run.stderr = exc.message
+        run.result_json = {"error": exc.code, "message": exc.message}
+        sandbox_result = {"passed": False, "tests_passed": 0, "tests_total": len(tests), "error": exc.code}
+
+    # Map sandbox outcome onto rubric-ish score for scheduler / passport.
+    ratio = (sandbox_result.get("tests_passed") or 0) / max(1, sandbox_result.get("tests_total") or 1)
+    overall = round(ratio * 5, 2)
+    result = {
+        "overall_score": overall,
+        "overall_max": 5,
+        "uncertainty": 0.15 if sandbox_result.get("passed") else 0.35,
+        "is_provisional": False,
+        "model_version": "sandbox-v1",
+        "prompt_version": "implement-v1",
+        "status_suggestion": "demonstrated" if sandbox_result.get("passed") else "needs_review",
+        "summary": (
+            f"Sandbox: {sandbox_result.get('tests_passed', 0)}/{sandbox_result.get('tests_total', 0)} tests passed."
+        ),
+        "sandbox": sandbox_result,
+        "evidence_quotes": [],
+        "errors": []
+        if sandbox_result.get("passed")
+        else [{"error_code": "sandbox_fail", "description": "One or more sandbox tests failed", "severity": "medium"}],
+    }
+
+    evaluation = Evaluation(
+        attempt_id=attempt.id,
+        rubric_version=item.rubric_version,
+        result_json=result,
+        model_version="sandbox-v1",
+        prompt_version="implement-v1",
+        confidence=1.0 - float(result["uncertainty"]),
+        is_provisional=False,
+    )
+    db.add(evaluation)
+
+    if item.competency_id:
+        skill = db.scalar(
+            select(UserSkill).where(UserSkill.user_id == user.id, UserSkill.competency_id == item.competency_id)
+        )
+        if skill:
+            if sandbox_result.get("passed") and skill.evidence_count >= 1:
+                skill.status = "demonstrated"
+            elif sandbox_result.get("passed"):
+                skill.status = "developing"
+            else:
+                skill.status = "needs_review"
+            skill.evidence_count += 1
+            skill.last_attempt_at = attempt.submitted_at
+
+    sched_result = result_from_score(overall)
+    state = db.scalar(
+        select(ReviewState).where(ReviewState.user_id == user.id, ReviewState.practice_item_id == item.id)
+    )
+    if not state:
+        state = ReviewState(
+            user_id=user.id,
+            practice_item_id=item.id,
+            due_at=datetime.now(UTC),
+            stability=1.0,
+            difficulty=0.3,
+            reps=0,
+        )
+        db.add(state)
+        db.flush()
+    new_s, new_d, interval, fails, remediation = next_interval_days(
+        result=sched_result,
+        stability=state.stability,
+        difficulty=state.difficulty,
+        reps=state.reps,
+        consecutive_fails=getattr(state, "consecutive_fails", 0) or 0,
+    )
+    state.stability, state.difficulty = new_s, new_d
+    state.reps += 1
+    state.consecutive_fails = fails
+    state.remediation_mode = remediation
+    state.last_result = sched_result
+    state.due_at = compute_due_at(interval)
+    state.version += 1
+
+    db.add(
+        ReviewEvent(
+            user_id=user.id,
+            practice_item_id=item.id,
+            result=sched_result,
+            confidence=payload.confidence,
+            occurred_at=datetime.now(UTC),
+        )
+    )
+    db.add(
+        LearnerMemory(
+            user_id=user.id,
+            memory_type="procedural",
+            content_json={
+                "modality": "implement",
+                "attempt_id": str(attempt.id),
+                "passed": bool(sandbox_result.get("passed")),
+                "tests_passed": sandbox_result.get("tests_passed"),
+            },
+            provenance_json={"source": "sandbox"},
+            confidence=payload.confidence,
+            status="active",
+            competency_id=item.competency_id,
+        )
+    )
+    db.add(UsageEvent(user_id=user.id, feature="sandbox_implement", units=1, cost_usd=0, metadata_json={}))
+    track(db, user_id=user.id, event_name="implement_submitted", properties={"attempt_id": str(attempt.id)})
+    db.commit()
+    db.refresh(evaluation)
+    return {
+        "attempt_id": str(attempt.id),
+        "evaluation_id": str(evaluation.id),
+        "sandbox": sandbox_result,
+        "result_json": result,
+        "remediation_mode": remediation,
+    }

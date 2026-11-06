@@ -13,6 +13,8 @@ const NAV = [
   { href: "/app/learn", label: "Learn" },
   { href: "/app/practice", label: "Practice" },
   { href: "/app/practice/voice", label: "Voice" },
+  { href: "/app/projects", label: "Projects" },
+  { href: "/app/calendar", label: "Calendar" },
   { href: "/app/memory", label: "Memory" },
   { href: "/app/progress", label: "Progress" },
 ];
@@ -54,6 +56,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
             <Link href="/app/settings" className="block rounded-xl px-3 py-2 text-sm text-ink-700 hover:bg-white/70">
               Settings
+            </Link>
+            <Link href="/app/admin" className="block rounded-xl px-3 py-2 text-sm text-ink-700 hover:bg-white/70">
+              Admin
             </Link>
             <button onClick={logout} className="block w-full rounded-xl px-3 py-2 text-left text-sm text-ink-500 hover:bg-white/70">
               Log out

@@ -15,6 +15,7 @@ from app.modules.sources.service import extract_and_attach_concepts
 from app.schemas.common import ApproveConceptsIn, ConceptOut, SourceCreateIn
 from app.services.pdf_extract import extract_pdf_text
 from app.services.ssrf import fetch_public_text
+from app.services.youtube import fetch_youtube_transcript
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -59,11 +60,29 @@ def create_source(
         if payload.type == "url":
             if not payload.url:
                 raise AppError("invalid_url", "URL is required for url sources", 400)
-            text = fetch_public_text(payload.url)
+            # Auto-detect YouTube URLs as transcript ingest.
+            url_l = payload.url.lower()
+            if "youtube.com" in url_l or "youtu.be" in url_l:
+                text, yt_meta = fetch_youtube_transcript(payload.url)
+                meta.update(yt_meta)
+                meta["fetched"] = True
+                # Normalize stored type for provenance.
+                payload_type = "youtube"
+            else:
+                text = fetch_public_text(payload.url)
+                meta["fetched"] = True
+                payload_type = "url"
+        elif payload.type == "youtube":
+            if not payload.url:
+                raise AppError("invalid_url", "YouTube URL is required", 400)
+            text, yt_meta = fetch_youtube_transcript(payload.url)
+            meta.update(yt_meta)
             meta["fetched"] = True
+            payload_type = "youtube"
         elif payload.type == "text":
             if not text:
                 raise AppError("empty_text", "Text content is required", 400)
+            payload_type = "text"
         elif payload.type == "pdf":
             raise AppError("use_upload", "Use /sources/upload for PDF files", 400)
         else:
@@ -89,7 +108,7 @@ def create_source(
 
     source = Source(
         user_id=user.id,
-        type=payload.type,
+        type=payload_type,
         title=payload.title,
         source_uri=payload.url,
         status="processing",

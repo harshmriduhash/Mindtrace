@@ -58,6 +58,22 @@ class ObjectStorage:
             return obj["Body"].read()
         return (self.local_root / key).read_bytes()
 
+    def delete(self, key: str) -> None:
+        if self.use_s3:
+            client = boto3.client(
+                "s3",
+                endpoint_url=self.settings.s3_endpoint_url or None,
+                aws_access_key_id=self.settings.s3_access_key,
+                aws_secret_access_key=self.settings.s3_secret_key,
+                region_name=self.settings.s3_region,
+                config=Config(signature_version="s3v4"),
+            )
+            client.delete_object(Bucket=self.settings.s3_bucket, Key=key)
+            return
+        path = self.local_root / key
+        if path.exists():
+            path.unlink()
+
     @staticmethod
     def checksum(data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()

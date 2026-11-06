@@ -17,7 +17,7 @@
   <a href="#how-mindtrace-solves-it"><img src="https://img.shields.io/badge/Solution—Evidence_loop-C45C26?style=flat-square" alt="Solution" /></a>
   <a href="#does-it-save-time--money"><img src="https://img.shields.io/badge/ROI—Time_+_Money-161C19?style=flat-square" alt="ROI" /></a>
   <a href="#architecture"><img src="https://img.shields.io/badge/Architecture—HLD_·_LLD-2C3A32?style=flat-square" alt="Architecture" /></a>
-  <img src="https://img.shields.io/badge/Status—Private_Beta_v0.4-0A5A46?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/Status—Private_Beta_v0.5-0A5A46?style=flat-square" alt="Status" />
   <img src="https://img.shields.io/badge/Payments—Razorpay_India-161C19?style=flat-square" alt="Payments" />
 </p>
 
@@ -147,17 +147,20 @@ Auth, quotas, scheduling, ownership, and evidence rules stay deterministic in ap
 
 | Area | What you get |
 |---|---|
-| **Today** | One clear next best action + why |
+| **Today** | One clear next best action + adaptive remediation reason |
 | **My Skills** | Competency map with prerequisites, evidence drill-down, and dispute |
-| **Learn** | Import **text / URL / PDF** → edit concepts → see provenance → approve → tutor |
-| **Practice** | **Multi-item baseline** (pause/resume) · recall/design/diagnose · **challenge feedback** |
-| **Memory** | Inspect recurring errors; delete what you don’t want kept |
-| **Progress** | Timeline of attempts and evidence |
-| **Passport** | Evidence-linked Skill Passport (print / JSON export) — not a hiring credential |
-| **Voice** | Spoken explain tasks: mic + browser transcript → rubric eval |
-| **Usage / Billing / Settings** | Quotas · Razorpay · export/delete · extension token · beta feedback |
+| **Learn** | Import **text / URL / YouTube / PDF** → edit concepts → provenance → approve → tutor |
+| **Practice** | Baseline · recall/design/diagnose · **implement (sandbox)** · challenge feedback |
+| **Voice** | Mic + browser STT, or server **Whisper** when AI keys are set |
+| **Projects** | Link public GitHub repos as user-approved skill evidence |
+| **Calendar** | ICS feed of due reviews (+ Google Calendar subscribe URL) |
+| **Memory** | Inspect recurring errors; correct/delete; **hard account purge** |
+| **Progress / Passport** | Evidence timeline + Skill Passport (print / JSON) |
+| **Usage / Billing / Settings** | Quotas · live Razorpay · MFA · OAuth · export/delete · extension token |
+| **Admin** | Session admin console (`is_admin`) + `X-Admin-Key` API |
 
-Public trust pages: `/methodology` · `/privacy` · `/security` · `/terms`
+Public trust pages: `/methodology` · `/privacy` · `/security` · `/terms`  
+Launch paths: **System Design for Senior Engineers** · **Applied AI Engineering**
 
 ### P0 depth + launch (v0.3)
 
@@ -181,6 +184,22 @@ Plan: [`docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md`](docs/P1_PASSPORT_EXTENSION_VO
 2. **Browser extension** — `extensions/mindtrace-capture` MV3; Bearer token from Settings; `POST /extension/capture`  
 3. **Voice practice** — `/app/practice/voice`; browser STT + optional audio store; `POST /voice/submit` · `/voice/upload`  
 4. **Vercel prep** — `apps/web/vercel.json` + [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+
+### Depth · auth · ops (v0.5)
+
+1. **Implement + sandbox** — curated Python tasks; AST-restricted runner; `/app/practice/implement`  
+2. **Adaptive scheduling** — fail streaks → varied / tutor-first / implement remediation on Today  
+3. **Hard purge** — Settings deletion permanently removes user data (worker-backed when grace > 0)  
+4. **Live Razorpay** — Orders API + webhook entitlement activation when keys are set  
+5. **SMTP email** — real verification mail when `SMTP_*` configured  
+6. **YouTube captions** — public transcript ingest (`type=youtube` or YouTube URL)  
+7. **MFA (TOTP)** — setup/confirm/disable; required on login when enabled  
+8. **Whisper STT** — server transcription on voice upload when `AI_ENABLED` + OpenAI key  
+9. **OAuth** — Google + GitHub (enable with client IDs)  
+10. **Applied AI path** — `python scripts/seed_applied_ai.py`  
+11. **GitHub project evidence** — `/app/projects`  
+12. **Calendar ICS** — `/app/calendar`  
+13. **Admin UI** — `/app/admin` (promote via `POST /admin/users/promote`)
 
 ---
 
@@ -265,14 +284,16 @@ flowchart LR
 
 | Module | Responsibility | Critical rules |
 |---|---|---|
-| `auth` | Signup/login/session, email verification, rate limits | Argon2id; HttpOnly cookies |
+| `auth` / `mfa` / `oauth` | Sessions, TOTP MFA, Google/GitHub OAuth | Argon2id; HttpOnly cookies |
 | `onboarding` | Goal, path, time budget | Seeds `user_skills` |
-| `sources` | Text / SSRF-safe URL / PDF | User approves concepts before graph commit |
-| `practice` | Attempts, rubric eval, FSRS-lite scheduler | Never drop a submitted response |
-| `memory` | Semantic/episodic/error/progress | User can correct/delete |
+| `sources` | Text / URL / YouTube / PDF | User approves concepts before graph commit |
+| `practice` | Attempts, sandbox implement, adaptive FSRS-lite | Never drop a submitted response |
+| `memory` | Inspect/correct/export + hard purge | User controls retention |
 | `tutor` | Source-grounded explanation | Only approved concepts + citations |
-| `usage` | Quotas & transparency | Server-side enforcement |
-| `recommendations` | Next best action | Deterministic priority rules |
+| `usage` / `billing` | Quotas + Razorpay entitlements | Server-side enforcement |
+| `recommendations` | Next best action + remediation | Deterministic priority rules |
+| `projects` / `calendar` | GitHub evidence · ICS reviews | User-approved links only |
+| `admin` | Overview, jobs, users, feedback | Key and/or `is_admin` + MFA |
 
 ### Request path — practice evaluation (LLD sequence)
 
@@ -402,16 +423,28 @@ alembic upgrade head
 docker compose up -d
 # then set DATABASE_URL=postgresql+psycopg://mindtrace:mindtrace@localhost:5432/mindtrace
 alembic upgrade head
+python scripts/seed_system_design.py
+python scripts/seed_applied_ai.py
 ```
 
-### 6) Browser extension (local)
+### 6) Seed skill paths (SQLite or Postgres)
+
+```bash
+cd apps/api && source .venv/bin/activate
+python scripts/init_db.py
+alembic upgrade head
+python scripts/seed_system_design.py   # System Design
+python scripts/seed_applied_ai.py      # Applied AI Engineering
+```
+
+### 7) Browser extension (local)
 
 ```bash
 # Chrome → Extensions → Load unpacked → extensions/mindtrace-capture
 # Settings → Generate extension token → paste into extension options
 ```
 
-### 7) Deploy web to Vercel
+### 8) Deploy web to Vercel
 
 See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**. Short version:
 
@@ -427,10 +460,12 @@ See **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**. Short version:
 | `DATABASE_URL` | SQLite or Postgres |
 | `SESSION_SECRET` | Sign cookies (change in prod) |
 | `APP_ORIGIN` / `API_ORIGIN` | CORS + cookie domain pairing |
-| `AI_ENABLED` / `OPENAI_API_KEY` | Optional LLM path |
+| `AI_ENABLED` / `OPENAI_API_KEY` / `WHISPER_MODEL` | Optional LLM + Whisper STT |
 | `STORAGE_BACKEND` / `LOCAL_STORAGE_DIR` | `local` or `s3` |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | India checkout (optional) |
-| `SMTP_*` | Real verification email (optional) |
+| `RAZORPAY_KEY_ID` / `SECRET` / `WEBHOOK_SECRET` | Live India checkout |
+| `SMTP_*` / `EMAIL_FROM` | Production verification email |
+| `GOOGLE_OAUTH_*` / `GITHUB_OAUTH_*` | Social login (optional) |
+| `SANDBOX_ENABLED` / `ACCOUNT_PURGE_GRACE_HOURS` | Implement runner + purge timing |
 | `ADMIN_API_KEY` | Header `X-Admin-Key` for `/api/v1/admin/*` |
 | `NEXT_PUBLIC_API_URL` | Default `/api/v1` (same-origin) |
 
@@ -459,7 +494,9 @@ Think of Mindtrace like a serious coach with a notebook: it remembers what you s
 - SSRF blocks for private IPs, localhost, link-local, cloud metadata hosts  
 - PDF magic-byte checks, size/page caps, encrypted PDFs rejected  
 - Prompt-injection stance: imported text is **data**, never instructions  
-- Export + deletion from Settings  
+- Export + **hard purge** from Settings  
+- TOTP MFA; admin console requires `is_admin` (+ MFA when enabled)  
+- Sandbox blocks dangerous imports; not a multi-tenant isolator (use Firecracker/gVisor for hostile tenants)  
 - Privacy / Security / Methodology pages in the product  
 
 We do **not** claim SOC 2 / GDPR certification until independently verified.
@@ -474,8 +511,8 @@ We do **not** claim SOC 2 / GDPR certification until independently verified.
 | 1A–1D MVP loop | Activation → learn → practice → trust | Done |
 | P0 depth + launch | Baseline set, provenance, challenge, map depth, migrations, storage/workers, CI, analytics, India ops | **Done (v0.3)** |
 | P1 Passport / Extension / Voice | Evidence passport, Chrome capture, spoken practice, Vercel prep | **Done (v0.4)** |
-| Live Razorpay keys / SMTP | Turn stubs into production money + mail | Configure env when ready |
-| Next | 2nd skill path, adaptive scheduling, production hardening | After retention signal |
+| v0.5 depth | Implement/sandbox, adaptive scheduling, hard purge, live Razorpay/SMTP wiring, YouTube, MFA, Whisper, OAuth, Applied AI path, GitHub evidence, calendar, admin UI | **Done (code)** — enable via env keys |
+| Next | Production deploy hardening, expert rubric review, retention validation | After private beta signal |
 
 Full product definition: [`Mindtrace_Production_Grade_PRD_v0.1.md`](Mindtrace_Production_Grade_PRD_v0.1.md)  
 Phase plan: [`docs/MVP_PHASE_PLAN.md`](docs/MVP_PHASE_PLAN.md) · P0: [`docs/P0_DEPTH_LAUNCH_PLAN.md`](docs/P0_DEPTH_LAUNCH_PLAN.md) · P1: [`docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md`](docs/P1_PASSPORT_EXTENSION_VOICE_PLAN.md) · Deploy: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)  

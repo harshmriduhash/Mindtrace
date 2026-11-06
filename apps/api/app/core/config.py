@@ -58,6 +58,27 @@ class Settings(BaseSettings):
     # Admin
     admin_api_key: str = "dev-admin-key-change-me"
 
+    # OAuth (optional — disabled when empty)
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+    oauth_redirect_base: str = ""  # defaults to api_origin
+
+    # MFA
+    mfa_issuer: str = "Mindtrace"
+
+    # Sandbox (implement tasks)
+    sandbox_enabled: bool = True
+    sandbox_timeout_seconds: int = 3
+    sandbox_max_output_chars: int = 20_000
+
+    # Account purge
+    account_purge_grace_hours: int = 0  # 0 = purge ASAP via worker
+
+    # Whisper / STT
+    whisper_model: str = "whisper-1"
+
 
 @lru_cache
 def get_settings() -> Settings:

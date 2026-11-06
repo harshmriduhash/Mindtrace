@@ -21,6 +21,7 @@ cd apps/api
 export DATABASE_URL=postgresql+psycopg://...
 alembic upgrade head
 python scripts/seed_system_design.py
+python scripts/seed_applied_ai.py
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 # optional worker:
 PYTHONPATH=. python -m app.workers.process_jobs
@@ -34,7 +35,7 @@ Required env (API):
 - `API_ORIGIN` = `https://api.your-domain.com`
 - `COOKIE_SECURE=true`
 - `ENVIRONMENT=production`
-- Optional: `OPENAI_API_KEY`, `RAZORPAY_*`, `SMTP_*`, `S3_*`
+- Optional: `OPENAI_API_KEY`, `RAZORPAY_*`, `SMTP_*`, `S3_*`, `GOOGLE_OAUTH_*`, `GITHUB_OAUTH_*`
 
 CORS already allows `APP_ORIGIN` and `chrome-extension://*`.
 

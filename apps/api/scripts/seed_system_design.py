@@ -149,6 +149,56 @@ PRACTICE = [
         "minutes": 5,
         "keywords": ["requirements", "constraints", "trade-off", "summary", "clarify"],
     },
+    {
+        "comp": "caching",
+        "type": "implement",
+        "prompt": "Implement `ttl_jitter(base_ttl, jitter_ratio)` returning an integer TTL with symmetric jitter to reduce stampedes.",
+        "minutes": 10,
+        "keywords": ["ttl", "jitter", "cache"],
+        "starter_code": (
+            "import random\n\n"
+            "def ttl_jitter(base_ttl: int, jitter_ratio: float = 0.1) -> int:\n"
+            "    \"\"\"Return base_ttl +/- jitter_ratio, at least 1. Deterministic tests patch random.\"\"\"\n"
+            "    # TODO: implement\n"
+            "    return base_ttl\n"
+        ),
+        "tests": [
+            {
+                "setup": "import random; random.random = lambda: 0.5",
+                "expression": "ttl_jitter(100, 0.1)",
+                "expected": 100,
+            },
+            {
+                "setup": "import random; random.random = lambda: 1.0",
+                "expression": "ttl_jitter(100, 0.1)",
+                "expected": 110,
+            },
+            {
+                "setup": "import random; random.random = lambda: 0.0",
+                "expression": "ttl_jitter(100, 0.1)",
+                "expected": 90,
+            },
+        ],
+    },
+    {
+        "comp": "reliability",
+        "type": "implement",
+        "prompt": "Implement `should_retry(attempt, max_attempts, status_code)` — retry on 429/503 if attempts remain.",
+        "minutes": 8,
+        "keywords": ["retry", "429", "503"],
+        "starter_code": (
+            "def should_retry(attempt: int, max_attempts: int, status_code: int) -> bool:\n"
+            "    \"\"\"Return True when another retry is allowed for transient HTTP codes.\"\"\"\n"
+            "    # TODO: implement\n"
+            "    return False\n"
+        ),
+        "tests": [
+            {"expression": "should_retry(0, 3, 503)", "expected": True},
+            {"expression": "should_retry(2, 3, 429)", "expected": True},
+            {"expression": "should_retry(3, 3, 503)", "expected": False},
+            {"expression": "should_retry(0, 3, 400)", "expected": False},
+        ],
+    },
 ]
 
 
@@ -221,6 +271,10 @@ def main() -> None:
             )
             if exists:
                 continue
+            meta = {"expected_keywords": p["keywords"], "language": "python"}
+            if p["type"] == "implement":
+                meta["starter_code"] = p.get("starter_code", "")
+                meta["tests"] = p.get("tests", [])
             db.add(
                 PracticeItem(
                     user_id=None,
@@ -233,7 +287,7 @@ def main() -> None:
                     difficulty="medium",
                     expected_minutes=p["minutes"],
                     is_curated=True,
-                    metadata_json={"expected_keywords": p["keywords"]},
+                    metadata_json=meta,
                 )
             )
             print(f"  + practice ({p['type']}) for {p['comp']}")

@@ -41,7 +41,11 @@ export default function PracticeIndexPage() {
         {items.map((item) => (
           <Link
             key={item.id}
-            href={`/app/practice/assessment?item=${item.id}`}
+            href={
+              item.type === "implement"
+                ? `/app/practice/implement?item=${item.id}`
+                : `/app/practice/assessment?item=${item.id}`
+            }
             className="panel block p-5 transition hover:bg-white"
           >
             <p className="font-mono text-xs uppercase tracking-wider text-accent-strong">{item.type}</p>

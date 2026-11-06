@@ -14,7 +14,7 @@ type ConceptDetail = Concept & {
     excerpt: string;
   }[];
 };
-type Mode = "text" | "url" | "pdf";
+type Mode = "text" | "url" | "youtube" | "pdf";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
@@ -71,10 +71,10 @@ export default function LearnPage() {
         source = await api<Source>("/sources", {
           method: "POST",
           json: {
-            type: mode,
+            type: mode === "youtube" ? "youtube" : mode,
             title: form.get("title"),
             text: mode === "text" ? form.get("text") : undefined,
-            url: mode === "url" ? form.get("url") : undefined,
+            url: mode === "url" || mode === "youtube" ? form.get("url") : undefined,
             idempotency_key: crypto.randomUUID(),
           },
         });
@@ -147,12 +147,12 @@ export default function LearnPage() {
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-4xl font-semibold text-ink-950">Learn</h1>
-        <p className="mt-2 text-ink-600">Import material (text, URL, or PDF), approve concepts, keep provenance.</p>
+        <p className="mt-2 text-ink-600">Import material (text, URL, YouTube captions, or PDF), approve concepts, keep provenance.</p>
       </div>
 
       <form onSubmit={onImport} className="panel space-y-4 p-6">
         <div className="flex flex-wrap gap-2">
-          {(["text", "url", "pdf"] as Mode[]).map((m) => (
+          {(["text", "url", "youtube", "pdf"] as Mode[]).map((m) => (
             <button
               key={m}
               type="button"
@@ -184,6 +184,22 @@ export default function LearnPage() {
             </label>
             <input className="input" id="url" name="url" type="url" required placeholder="https://example.com/article" />
             <p className="mt-1 text-xs text-ink-500">Private/internal hosts are blocked (SSRF protection). Paywalls are not bypassed.</p>
+          </div>
+        )}
+        {mode === "youtube" && (
+          <div>
+            <label className="label" htmlFor="url">
+              YouTube URL (public captions)
+            </label>
+            <input
+              className="input"
+              id="url"
+              name="url"
+              type="url"
+              required
+              placeholder="https://www.youtube.com/watch?v=…"
+            />
+            <p className="mt-1 text-xs text-ink-500">Only public caption tracks. No paywall or private video bypass.</p>
           </div>
         )}
         {mode === "pdf" && (

@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""Process queued jobs (source extraction). Run: python -m app.workers.process_jobs"""
+"""Process queued jobs (source extraction, account purge). Run: python -m app.workers.process_jobs"""
 
 from __future__ import annotations
 
 import sys
 import time
 from pathlib import Path
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models import Job, Source
 from app.modules.sources.service import extract_and_attach_concepts
 from app.services.pdf_extract import extract_pdf_text
+from app.services.purge import hard_purge_user
 from app.services.storage import object_storage
-from app.core.config import get_settings
 
 
 def process_one(db) -> bool:
@@ -43,6 +45,14 @@ def process_one(db) -> bool:
             extract_and_attach_concepts(db, source=source, text=text, user_id=source.user_id, create_job=False)
             job.status = "completed"
             job.result_json = {"ok": True}
+        elif job.type == "account_purge":
+            user_id = job.payload_json.get("user_id")
+            # Mark complete before purge — purge deletes the user's jobs.
+            job.status = "completed"
+            job.result_json = {"ok": True}
+            db.commit()
+            hard_purge_user(db, UUID(str(user_id)))
+            return True
         else:
             job.status = "failed"
             job.error_code = "unknown_job_type"

@@ -85,7 +85,7 @@ class UserSkillOut(ORMModel):
 
 
 class SourceCreateIn(BaseModel):
-    type: str = Field(pattern="^(text|url|pdf)$")
+    type: str = Field(pattern="^(text|url|pdf|youtube)$")
     title: str = Field(min_length=1, max_length=500)
     text: str | None = None
     url: str | None = None
@@ -115,6 +115,7 @@ class PracticeItemOut(ORMModel):
     expected_minutes: int
     competency_id: UUID | None
     rubric_version: str
+    metadata_json: dict[str, Any] = {}
 
 
 class AttemptCreateIn(BaseModel):

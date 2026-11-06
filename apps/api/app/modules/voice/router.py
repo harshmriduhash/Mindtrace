@@ -185,16 +185,23 @@ async def upload_voice_audio(
         object_key = f"users/{user.id}/voice/{uuid.uuid4().hex}.webm"
         object_storage.put_bytes(key=object_key, data=data, content_type=file.content_type or "audio/webm")
 
-    # Optional server transcription path when AI enabled and no transcript provided
     final_transcript = transcript.strip()
-    if not final_transcript and settings.ai_enabled and object_key:
+    if not final_transcript and object_key:
+        from app.services.whisper import transcribe_audio
+
+        data = object_storage.get_bytes(object_key)
+        whispered = transcribe_audio(
+            data=data,
+            filename=file.filename if file else "audio.webm",
+            content_type=(file.content_type if file else None) or "audio/webm",
+        )
+        final_transcript = whispered["transcript"]
+    if not final_transcript:
         raise AppError(
             "transcript_required",
-            "Provide a browser transcript for now. Server Whisper transcription can be enabled later.",
+            "Provide a browser transcript, or upload audio with AI_ENABLED + OPENAI_API_KEY for Whisper STT",
             400,
         )
-    if not final_transcript:
-        raise AppError("transcript_required", "Transcript is required for voice evaluation", 400)
 
     result = submit_voice_transcript(
         VoiceSubmitIn(

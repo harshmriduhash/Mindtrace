@@ -40,11 +40,16 @@ class User(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255))  # nullable for OAuth-only
     email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     plan: Mapped[str] = mapped_column(String(32), default="free", nullable=False)
     onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    mfa_secret: Mapped[Optional[str]] = mapped_column(String(64))  # TOTP secret (base32)
+    mfa_recovery_codes_json: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
+    deletion_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     profile: Mapped[Optional[Profile]] = relationship(back_populates="user", uselist=False)
 
@@ -133,7 +138,7 @@ class Source(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    type: Mapped[str] = mapped_column(String(32), nullable=False)  # text | url | pdf
+    type: Mapped[str] = mapped_column(String(32), nullable=False)  # text | url | pdf | youtube
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     source_uri: Mapped[Optional[str]] = mapped_column(Text)
     object_key: Mapped[Optional[str]] = mapped_column(String(512))
@@ -197,7 +202,9 @@ class PracticeItem(Base, TimestampMixin):
     competency_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("competencies.id"))
     concept_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("concepts.id"))
     skill_path_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("skill_paths.id"))
-    type: Mapped[str] = mapped_column(String(64), nullable=False)  # recall | explain | design | diagnose | baseline
+    type: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # recall | explain | design | diagnose | implement | baseline | voice
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     rubric_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     rubric_version: Mapped[str] = mapped_column(String(32), default="1.0.0", nullable=False)
@@ -205,6 +212,7 @@ class PracticeItem(Base, TimestampMixin):
     expected_minutes: Mapped[int] = mapped_column(Integer, default=8, nullable=False)
     is_curated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    # implement tasks: metadata_json may include starter_code, tests[], language, remediation_of
 
 
 class Attempt(Base, TimestampMixin):
@@ -334,6 +342,9 @@ class ReviewState(Base, TimestampMixin):
     difficulty: Mapped[float] = mapped_column(Float, default=0.3, nullable=False)
     last_result: Mapped[Optional[str]] = mapped_column(String(32))
     reps: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    consecutive_fails: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    remediation_mode: Mapped[str] = mapped_column(String(32), default="standard", nullable=False)
+    # standard | varied | tutor_first | implement
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     __table_args__ = (
@@ -404,3 +415,64 @@ class AuditEvent(Base):
     target_id: Mapped[Optional[str]] = mapped_column(String(128))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OAuthAccount(Base, TimestampMixin):
+    __tablename__ = "oauth_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)  # google | github
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(320))
+    access_token_enc: Mapped[Optional[str]] = mapped_column(Text)
+    refresh_token_enc: Mapped[Optional[str]] = mapped_column(Text)
+    scopes: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (UniqueConstraint("provider", "provider_subject", name="uq_oauth_provider_subject"),)
+
+
+class ProjectEvidence(Base, TimestampMixin):
+    __tablename__ = "project_evidence"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), default="github", nullable=False)
+    repo_full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    repo_url: Mapped[str] = mapped_column(Text, nullable=False)
+    competency_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("competencies.id"))
+    summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    languages_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    user_approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "repo_full_name", name="uq_user_repo"),)
+
+
+class CalendarConnection(Base, TimestampMixin):
+    __tablename__ = "calendar_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="ics", nullable=False)  # ics | google
+    feed_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    google_refresh_token_enc: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+
+class SandboxRun(Base, TimestampMixin):
+    __tablename__ = "sandbox_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("attempts.id", ondelete="SET NULL"))
+    practice_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("practice_items.id"), nullable=False)
+    language: Mapped[str] = mapped_column(String(32), default="python", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    stdout: Mapped[Optional[str]] = mapped_column(Text)
+    stderr: Mapped[Optional[str]] = mapped_column(Text)
+    exit_code: Mapped[Optional[int]] = mapped_column(Integer)
+    tests_passed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tests_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)

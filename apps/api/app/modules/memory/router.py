@@ -2,16 +2,18 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.deps import get_current_user
 from app.core.errors import NotFoundError
 from app.db.session import get_db
-from app.models import Attempt, AuditEvent, Concept, ErrorPattern, LearnerMemory, Source, User, UserSkill
+from app.models import Attempt, AuditEvent, Concept, ErrorPattern, Job, LearnerMemory, Source, User, UserSkill
 from app.schemas.common import MemoryOut, MessageOut
+from app.services.purge import hard_purge_user
 
 router = APIRouter(tags=["memory"])
 
@@ -153,21 +155,45 @@ def export_data(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("/account/deletion", response_model=MessageOut)
 def request_deletion(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db), response: Response = None
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    response: Response = None,
+    hard: bool = Query(default=False),
 ) -> MessageOut:
     user.status = "pending_deletion"
+    user.deletion_requested_at = datetime.now(UTC)
     db.add(
         AuditEvent(
             actor_id=user.id,
             action="account_deletion_requested",
             target_type="user",
             target_id=str(user.id),
-            metadata_json={},
+            metadata_json={"hard": hard},
         )
     )
-    # Soft-delete active learning memory for immediate effect; hard purge job later.
+    # Soft-delete active learning memory for immediate effect.
     memories = db.scalars(select(LearnerMemory).where(LearnerMemory.user_id == user.id)).all()
     for m in memories:
         m.status = "deleted"
+
+    settings = get_settings()
+    if hard or settings.account_purge_grace_hours <= 0:
+        # Immediate hard purge (local/dev default). Clears session cookie via client logout.
+        uid = user.id
+        db.commit()
+        hard_purge_user(db, uid)
+        return MessageOut(message="Account hard-purged. All learning data has been permanently deleted.")
+
+    db.add(
+        Job(
+            user_id=user.id,
+            type="account_purge",
+            status="queued",
+            idempotency_key=f"purge:{user.id}",
+            payload_json={"user_id": str(user.id)},
+        )
+    )
     db.commit()
-    return MessageOut(message="Deletion requested. Active learning memory has been deactivated.")
+    return MessageOut(
+        message=f"Deletion requested. Hard purge queued (grace {settings.account_purge_grace_hours}h)."
+    )

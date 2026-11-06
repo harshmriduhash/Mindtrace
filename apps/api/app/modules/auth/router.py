@@ -62,6 +62,7 @@ def signup(payload: SignupIn, request: Request, response: Response, db: Session 
         email_verified_at=datetime.now(UTC) if auto_verify else None,
         status="active",
         plan="free",
+        mfa_recovery_codes_json=[],
     )
     db.add(user)
     db.flush()
@@ -93,15 +94,37 @@ def signup(payload: SignupIn, request: Request, response: Response, db: Session 
     return SignupOut(**me.model_dump(), verification_link=link if auto_verify else None)
 
 
+class LoginWithMfaIn(LoginIn):
+    mfa_code: str | None = Field(default=None, max_length=64)
+
+
 @router.post("/login", response_model=MeOut)
-def login(payload: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)) -> MeOut:
+def login(payload: LoginWithMfaIn, request: Request, response: Response, db: Session = Depends(get_db)) -> MeOut:
     check_rate_limit(f"login:{client_ip(request)}:{payload.email.lower()}", limit=5, window_seconds=900)
 
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
-    if not user or not verify_password(payload.password, user.password_hash):
+    if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
         raise UnauthorizedError("Invalid email or password")
     if user.status not in {"active"}:
         raise UnauthorizedError("Account unavailable")
+
+    if user.mfa_enabled and user.mfa_secret:
+        from app.services.mfa import hash_recovery_code, verify_totp
+
+        code = (payload.mfa_code or "").strip()
+        if not code:
+            raise AppError("mfa_required", "MFA code required", 401)
+        ok = verify_totp(user.mfa_secret, code)
+        if not ok:
+            hashed = hash_recovery_code(code)
+            codes = list(user.mfa_recovery_codes_json or [])
+            if hashed in codes:
+                codes.remove(hashed)
+                user.mfa_recovery_codes_json = codes
+                ok = True
+        if not ok:
+            raise UnauthorizedError("Invalid MFA code")
+
     profile = db.scalar(select(Profile).where(Profile.user_id == user.id))
     token = create_access_token(user_id=user.id, email=user.email)
     _set_session_cookie(response, token)
@@ -111,7 +134,7 @@ def login(payload: LoginIn, request: Request, response: Response, db: Session = 
             action="login",
             target_type="user",
             target_id=str(user.id),
-            metadata_json={},
+            metadata_json={"mfa": bool(user.mfa_enabled)},
         )
     )
     db.commit()
@@ -187,7 +210,9 @@ def _me_payload(user: User, profile: Profile | None) -> MeOut:
             "ai_evaluations_per_day": settings.free_ai_evaluations_per_day if user.plan == "free" else 200,
             "source_imports_per_hour": settings.free_source_imports_per_hour if user.plan == "free" else 60,
             "email_verified": bool(user.email_verified_at),
-            "billing": "manual",  # Stripe not enabled for India launch geography
+            "billing": "razorpay",
+            "mfa_enabled": bool(user.mfa_enabled),
+            "is_admin": bool(user.is_admin),
         },
     )
 
